@@ -1,384 +1,500 @@
 import random
 import string
 import hashlib
-import time
-from typing import Dict, List, Any, Optional, Tuple
-from dataclasses import dataclass, field
+import struct
+import base64
+import zlib
+from typing import List, Dict, Any, Optional, Tuple
+from .compiler import CompiledFunction, OpCode, Instruction
 
-from .lexer import LuaLexer
-from .parser import LuaParser, Chunk
-from .compiler import BytecodeCompiler, CompiledFunction
-from .vm_generator import VMGenerator
-from .encryption import AESEncryption, XOREncryption, BytecodeEncryption, StringEncryptor
-
-
-@dataclass
-class ObfuscationConfig:
-    """Configuration for obfuscation options"""
-    # VM Options
-    use_vm: bool = True
-    vm_randomize_opcodes: bool = True
-    
-    # Encryption
-    encrypt_strings: bool = True
-    encrypt_bytecode: bool = True
-    encryption_method: str = 'xor'
-    encryption_password: str = None
-    
-    # Variable Renaming
-    rename_variables: bool = True
-    rename_globals: bool = False
-    variable_prefix: str = ''
-    
-    # Code Mutation
-    add_junk_code: bool = True
-    junk_code_ratio: float = 0.3
-    
-    # Anti-Tampering
-    add_anti_tamper: bool = True
-    add_anti_dump: bool = True
-    add_integrity_check: bool = True
-    
-    # Output
-    mode: str = 'loadstring'
-    minify: bool = True
-    add_watermark: bool = True
-    watermark_text: str = "Protected by LuaShield"
-
-
-@dataclass
-class ObfuscationResult:
-    """Result of obfuscation"""
-    success: bool
-    output: str
-    errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    stats: Dict[str, Any] = field(default_factory=dict)
-
-
-class LuaObfuscator:
+class VMGenerator:
     """
-    Main Lua Obfuscator class
-    Integrates all obfuscation components
+    Professional VM Generator
+    Generates complex, Luraph-style obfuscated output
     """
     
-    BUILTIN_GLOBALS = {
-        'print', 'error', 'warn', 'assert', 'type', 'typeof', 'tostring',
-        'tonumber', 'pairs', 'ipairs', 'next', 'select', 'unpack',
-        'pcall', 'xpcall', 'rawget', 'rawset', 'rawequal', 'rawlen',
-        'setmetatable', 'getmetatable', 'setfenv', 'getfenv',
-        'collectgarbage', 'loadstring', 'loadfile', 'dofile', 'load',
-        'require', 'module', 'package',
-        'table', 'string', 'math', 'os', 'io', 'debug', 'coroutine', 'bit32', 'bit',
-        'utf8',
-        'game', 'workspace', 'script', 'plugin', 'shared', '_G', '_VERSION',
-        'Instance', 'Vector3', 'Vector2', 'CFrame', 'Color3', 'BrickColor',
-        'UDim', 'UDim2', 'Rect', 'Region3', 'Ray', 'Faces', 'Axes',
-        'TweenInfo', 'Enum', 'Random', 'NumberRange', 'NumberSequence',
-        'ColorSequence', 'PhysicalProperties', 'RaycastParams',
-        'OverlapParams', 'DockWidgetPluginGuiInfo',
-        'wait', 'Wait', 'delay', 'Delay', 'spawn', 'Spawn', 'tick', 'time',
-        'elapsedTime', 'settings', 'stats', 'UserSettings',
-        'task',
-        'true', 'false', 'nil', 'self'
-    }
-    
-    def __init__(self, config: ObfuscationConfig = None):
-        self.config = config or ObfuscationConfig()
-        self.variable_map: Dict[str, str] = {}
-        self.string_encryptor: Optional[StringEncryptor] = None
-        self.errors: List[str] = []
-        self.warnings: List[str] = []
-        self.stats: Dict[str, Any] = {}
-    
-    def obfuscate(self, source: str) -> ObfuscationResult:
-        """Obfuscate Lua source code"""
-        start_time = time.time()
-        self.errors = []
-        self.warnings = []
-        self.stats = {
-            'original_size': len(source),
-            'original_lines': source.count('\n') + 1
-        }
+    def __init__(self, key: bytes = None, use_encryption: bool = True):
+        self.key = key or bytes([random.randint(0, 255) for _ in range(32)])
+        self.use_encryption = use_encryption
+        self.opcode_map: Dict[int, int] = {}
+        self.reverse_map: Dict[int, int] = {}
+        self.string_keys: List[int] = [random.randint(1, 255) for _ in range(16)]
+        self.var_counter = 0
+        self.generated_names: set = set()
         
-        try:
-            if not self._validate_input(source):
-                return ObfuscationResult(
-                    success=False,
-                    output='',
-                    errors=self.errors
-                )
-            
-            # Step 1: Lexical Analysis
-            lexer = LuaLexer(source)
-            tokens = lexer.tokenize()
-            self.errors.extend(lexer.get_errors())
-            
-            if lexer.get_errors():
-                self.warnings.append("Lexer encountered errors")
-            
-            # Step 2: Parsing
-            parser = LuaParser(tokens)
-            ast = parser.parse()
-            self.errors.extend(parser.get_errors())
-            
-            if parser.get_errors():
-                self.warnings.append("Parser encountered errors")
-            
-            # Step 3: Compilation
-            compiler = BytecodeCompiler()
-            bytecode, compile_errors = compiler.compile(ast)
-            self.errors.extend(compile_errors)
-            
-            self.stats['constants'] = len(bytecode.constants)
-            self.stats['instructions'] = len(bytecode.instructions)
-            self.stats['functions'] = len(bytecode.children) + 1
-            
-            # Step 4: Generate VM
-            output = self._generate_protected_code(bytecode)
-            
-            # Step 5: Post-processing
-            if self.config.minify:
-                output = self._minify_output(output)
-            
-            self.stats['output_size'] = len(output)
-            self.stats['output_lines'] = output.count('\n') + 1
-            self.stats['time_ms'] = int((time.time() - start_time) * 1000)
-            self.stats['compression_ratio'] = round(
-                len(output) / len(source) * 100, 2
-            ) if source else 0
-            
-            return ObfuscationResult(
-                success=True,
-                output=output,
-                errors=self.errors,
-                warnings=self.warnings,
-                stats=self.stats
-            )
-            
-        except Exception as e:
-            self.errors.append(f"Obfuscation failed: {str(e)}")
-            return ObfuscationResult(
-                success=False,
-                output='',
-                errors=self.errors,
-                warnings=self.warnings
-            )
+        # Generate complex opcode mapping
+        self._generate_opcode_mapping()
+        
+        # Generate decoder key
+        self.decoder_seed = random.randint(100000, 999999)
     
-    def _validate_input(self, source: str) -> bool:
-        """Validate input source"""
-        if not source or not source.strip():
-            self.errors.append("Empty source code")
-            return False
+    def _generate_opcode_mapping(self):
+        """Generate randomized opcode mapping"""
+        available = list(range(1, 250))
+        random.shuffle(available)
         
-        if source.startswith('\x1bLua') or source.startswith('\x1b\x4c\x75\x61'):
-            self.errors.append("Luac bytecode is not supported")
-            return False
-        
-        try:
-            source.encode('utf-8')
-        except UnicodeError:
-            self.errors.append("Source contains invalid characters")
-            return False
-        
-        return True
+        for op in OpCode:
+            if available:
+                mapped = available.pop()
+                self.opcode_map[op.value] = mapped
+                self.reverse_map[mapped] = op.value
     
-    def _generate_protected_code(self, bytecode: CompiledFunction) -> str:
-        """Generate protected Lua code with VM"""
+    def _random_var(self, length: int = None) -> str:
+        """Generate unique random variable name"""
+        if length is None:
+            length = random.randint(6, 12)
+        
+        while True:
+            styles = [
+                self._gen_mixed_case,
+                self._gen_underscore_heavy,
+                self._gen_similar_chars,
+                self._gen_hex_style,
+            ]
+            name = random.choice(styles)(length)
+            if name not in self.generated_names:
+                self.generated_names.add(name)
+                return name
+    
+    def _gen_mixed_case(self, length: int) -> str:
+        chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_'
+        first = random.choice('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_')
+        rest = ''.join(random.choice(chars + '0123456789') for _ in range(length - 1))
+        return first + rest
+    
+    def _gen_underscore_heavy(self, length: int) -> str:
+        chars = '_lIi'
+        first = '_'
+        rest = ''.join(random.choice(chars) for _ in range(length - 2))
+        return first + rest + str(random.randint(0, 99))
+    
+    def _gen_similar_chars(self, length: int) -> str:
+        chars = 'lI1O0oiLlIi'
+        first = random.choice('lILi')
+        rest = ''.join(random.choice(chars) for _ in range(length - 2))
+        return first + rest + random.choice('aAbBcC')
+    
+    def _gen_hex_style(self, length: int) -> str:
+        return '_0x' + ''.join(random.choice('0123456789abcdef') for _ in range(length - 3))
+    
+    def _encode_number(self, num: int) -> str:
+        """Encode number in random format (hex, binary, octal, decimal)"""
+        if num < 0:
+            return str(num)
+        
+        formats = [
+            lambda n: str(n),  # decimal
+            lambda n: f"0x{n:X}" if n > 0 else "0x0",  # hex upper
+            lambda n: f"0x{n:x}" if n > 0 else "0x0",  # hex lower
+            lambda n: f"0B{bin(n)[2:]}" if n >= 0 else str(n),  # binary
+            lambda n: f"0b{bin(n)[2:]}" if n >= 0 else str(n),  # binary lower
+        ]
+        
+        if num == 0:
+            return random.choice(["0", "0x0", "0X0", "0B0", "0b0"])
+        
+        return random.choice(formats)(num)
+    
+    def _encode_string(self, s: str) -> Tuple[List[int], List[int]]:
+        """Encode string with XOR encryption"""
+        key = [random.randint(1, 255) for _ in range(max(8, len(s) // 4))]
+        encoded = []
+        for i, char in enumerate(s):
+            encoded.append(ord(char) ^ key[i % len(key)])
+        return encoded, key
+    
+    def _generate_string_decoder(self) -> str:
+        """Generate string decryption function"""
+        fn = self._random_var()
+        k = self._random_var()
+        d = self._random_var()
+        r = self._random_var()
+        i = self._random_var()
+        b = self._random_var()
+        
+        return f'''
+local {fn}=(function({k},{d})
+local {r}={{}};
+for {i}=1,#{d} do
+local {b}={d}[{i}];
+{r}[{i}]=string.char(({b}~{k}[({i}-1)%#{k}+1]));
+end;
+return table.concat({r});
+end);'''
+    
+    def _serialize_constants(self, constants: List[Any]) -> str:
+        """Serialize constants with encoding"""
         parts = []
         
-        # Watermark
-        if self.config.add_watermark:
-            parts.append("-- " + self.config.watermark_text)
-            parts.append("-- Generated: " + time.strftime('%Y-%m-%d %H:%M:%S'))
-            parts.append("")
+        for const in constants:
+            if const is None:
+                parts.append("nil")
+            elif isinstance(const, bool):
+                parts.append("true" if const else "false")
+            elif isinstance(const, int):
+                parts.append(self._encode_number(const))
+            elif isinstance(const, float):
+                if const == float('inf'):
+                    parts.append("(1/0)")
+                elif const == float('-inf'):
+                    parts.append("(-1/0)")
+                elif const != const:  # NaN
+                    parts.append("(0/0)")
+                else:
+                    parts.append(repr(const))
+            elif isinstance(const, str):
+                # Encode string
+                encoded, key = self._encode_string(const)
+                enc_str = ','.join(self._encode_number(b) for b in encoded)
+                key_str = ','.join(self._encode_number(k) for k in key)
+                parts.append(f"_S({{{key_str}}},{{{enc_str}}})")
+            else:
+                parts.append("nil")
         
-        # Generate encryption key
-        enc_key = bytes([random.randint(0, 255) for _ in range(32)])
-        
-        # Create VM generator
-        vm_gen = VMGenerator(
-            key=enc_key,
-            use_encryption=self.config.encrypt_bytecode
-        )
-        
-        # Generate VM code
-        vm_code = vm_gen.generate(bytecode, mode=self.config.mode)
-        
-        # Add anti-tamper
-        if self.config.add_anti_tamper:
-            vm_code = self._wrap_with_anti_tamper(vm_code)
-        
-        # Add anti-dump
-        if self.config.add_anti_dump:
-            vm_code = self._add_anti_dump(vm_code)
-        
-        # Add junk code
-        if self.config.add_junk_code:
-            vm_code = self._inject_junk_code(vm_code)
-        
-        parts.append(vm_code)
-        
-        return '\n'.join(parts)
+        return '{' + ','.join(parts) + '}'
     
-    def _wrap_with_anti_tamper(self, code: str) -> str:
-        """Wrap code with anti-tamper protection"""
-        code_hash = hashlib.sha256(code.encode()).hexdigest()[:16]
+    def _serialize_instructions(self, instructions: List[Instruction]) -> str:
+        """Serialize instructions with encoding"""
+        parts = []
         
-        wrapper_var = self._random_name()
-        hash_var = self._random_name()
-        check_var = self._random_name()
-        
-        # Build anti-tamper code without backslash in f-string
-        anti_tamper_lines = [
-            'local ' + hash_var + ' = "' + code_hash + '"',
-            'local ' + wrapper_var + ' = function()',
-            '    local ' + check_var + ' = ' + hash_var,
-            '    -- Integrity verification',
-            'end',
-            wrapper_var + '()',
-            ''
-        ]
-        
-        anti_tamper = '\n'.join(anti_tamper_lines)
-        return anti_tamper + '\n' + code
-    
-    def _add_anti_dump(self, code: str) -> str:
-        """Add anti-dump protection"""
-        var1 = self._random_name()
-        var2 = self._random_name()
-        
-        anti_dump_lines = [
-            'local ' + var1 + ' = newproxy and newproxy(true) or {}',
-            'local ' + var2 + ' = getmetatable(' + var1 + ') or {}',
-            var2 + '.__tostring = function() return "" end',
-            var2 + '.__metatable = "Protected"',
-            ''
-        ]
-        
-        anti_dump = '\n'.join(anti_dump_lines)
-        return anti_dump + '\n' + code
-    
-    def _inject_junk_code(self, code: str) -> str:
-        """Inject junk/dead code"""
-        lines = code.split('\n')
-        result = []
-        
-        junk_count = int(len(lines) * self.config.junk_code_ratio)
-        junk_positions = set()
-        
-        if len(lines) > 0:
-            positions = list(range(len(lines)))
-            random.shuffle(positions)
-            junk_positions = set(positions[:min(junk_count, len(positions))])
-        
-        for i, line in enumerate(lines):
-            result.append(line)
+        for instr in instructions:
+            mapped_op = self.opcode_map.get(instr.opcode.value, instr.opcode.value)
             
-            if i in junk_positions and not self._is_critical_line(line):
-                result.append(self._generate_junk_line())
+            if instr.operand is not None:
+                if instr.operand2 is not None:
+                    parts.append(f"{{{self._encode_number(mapped_op)},{self._encode_number(instr.operand)},{self._encode_number(instr.operand2)}}}")
+                else:
+                    parts.append(f"{{{self._encode_number(mapped_op)},{self._encode_number(instr.operand)}}}")
+            else:
+                parts.append(f"{{{self._encode_number(mapped_op)}}}")
         
-        self.stats['junk_lines_added'] = len(junk_positions)
-        return '\n'.join(result)
+        return '{' + ','.join(parts) + '}'
     
-    def _is_critical_line(self, line: str) -> bool:
-        """Check if line is critical"""
-        stripped = line.strip()
-        critical_patterns = [
-            'function', 'then', 'do', 'else', 'elseif',
-            '{', 'return', '--', 'end', 'local function'
-        ]
-        for p in critical_patterns:
-            if stripped.startswith(p) or stripped.endswith(p):
-                return True
-        return False
+    def _serialize_function(self, func: CompiledFunction) -> str:
+        """Serialize function with all metadata"""
+        children_parts = []
+        for child in func.children:
+            children_parts.append(self._serialize_function(child))
+        
+        children_str = '{' + ','.join(children_parts) + '}' if children_parts else '{}'
+        
+        return f'''{{
+[{self._encode_number(1)}]={self._serialize_constants(func.constants)},
+[{self._encode_number(2)}]={self._serialize_instructions(func.instructions)},
+[{self._encode_number(3)}]={self._encode_number(len(func.params))},
+[{self._encode_number(4)}]={'true' if func.is_vararg else 'false'},
+[{self._encode_number(5)}]={children_str},
+[{self._encode_number(6)}]={self._encode_number(len(func.locals))}
+}}'''
     
-    def _generate_junk_line(self) -> str:
-        """Generate a junk code line"""
-        junk_types = [
-            lambda: "local " + self._random_name() + " = " + str(random.randint(0, 9999)),
-            lambda: "local " + self._random_name() + " = " + str(random.random()),
-            lambda: "local " + self._random_name() + " = '" + self._random_name() + "'",
-            lambda: "local " + self._random_name() + " = {}",
-            lambda: "local " + self._random_name() + " = nil",
-            lambda: "local " + self._random_name() + " = " + random.choice(['true', 'false']),
-            lambda: "do local " + self._random_name() + " = " + str(random.randint(0, 100)) + " end",
-            lambda: "if false then local " + self._random_name() + " = 0 end",
-            lambda: "-- " + self._random_name(8)
-        ]
+    def _generate_vm_core(self) -> str:
+        """Generate the core VM execution engine"""
+        # Variable names
+        v_exec = self._random_var()
+        v_wrap = self._random_var()
+        v_create = self._random_var()
+        v_stk = self._random_var()
+        v_top = self._random_var()
+        v_pc = self._random_var()
+        v_code = self._random_var()
+        v_const = self._random_var()
+        v_upvals = self._random_var()
+        v_locals = self._random_var()
+        v_vararg = self._random_var()
+        v_nvar = self._random_var()
+        v_instr = self._random_var()
+        v_op = self._random_var()
+        v_a = self._random_var()
+        v_b = self._random_var()
+        v_env = self._random_var()
+        v_func = self._random_var()
+        v_children = self._random_var()
+        v_nparams = self._random_var()
+        v_push = self._random_var()
+        v_pop = self._random_var()
+        v_peek = self._random_var()
+        v_OP = self._random_var()
         
-        return random.choice(junk_types)()
-    
-    def _minify_output(self, code: str) -> str:
-        """Minify output code"""
-        lines = []
-        for line in code.split('\n'):
-            stripped = line.strip()
-            if stripped and not stripped.startswith('--'):
-                lines.append(stripped)
-            elif stripped.startswith('-- Protected') or stripped.startswith('-- Generated'):
-                lines.append(stripped)
+        # Opcode table
+        op_table_parts = []
+        for op in OpCode:
+            mapped = self.opcode_map[op.value]
+            op_table_parts.append(f"[{self._encode_number(mapped)}]={self._encode_number(op.value)}")
         
-        return '\n'.join(lines)
-    
-    def _random_name(self, length: int = 8) -> str:
-        """Generate random variable name"""
-        prefix = self.config.variable_prefix or ''
-        chars = string.ascii_letters + '_'
-        first = random.choice(string.ascii_letters + '_')
-        rest = ''.join(random.choice(chars + string.digits) for _ in range(length - 1))
-        return prefix + first + rest
-    
-    def obfuscate_file(self, input_path: str, output_path: str = None) -> ObfuscationResult:
-        """Obfuscate a Lua file"""
-        if input_path.endswith('.luac'):
-            return ObfuscationResult(
-                success=False,
-                output='',
-                errors=["Luac bytecode files are not supported"]
-            )
+        op_table = '{' + ','.join(op_table_parts) + '}'
         
-        try:
-            with open(input_path, 'r', encoding='utf-8') as f:
-                source = f.read()
-        except Exception as e:
-            return ObfuscationResult(
-                success=False,
-                output='',
-                errors=[f"Failed to read file: {str(e)}"]
-            )
-        
-        result = self.obfuscate(source)
-        
-        if result.success and output_path:
-            try:
-                with open(output_path, 'w', encoding='utf-8') as f:
-                    f.write(result.output)
-            except Exception as e:
-                result.warnings.append(f"Failed to write output: {str(e)}")
-        
-        return result
+        return f'''
+local {v_OP}={op_table};
 
+local {v_create};
+{v_create}=function({v_func},{v_env},{v_upvals})
+{v_env}={v_env} or (getfenv and getfenv(0)) or _ENV or _G;
 
-def obfuscate(source: str, **kwargs) -> str:
-    """Convenience function to obfuscate Lua code"""
-    config = ObfuscationConfig(**kwargs)
-    obfuscator = LuaObfuscator(config)
-    result = obfuscator.obfuscate(source)
-    
-    if not result.success:
-        raise ValueError(f"Obfuscation failed: {'; '.join(result.errors)}")
-    
-    return result.output
+local {v_exec};
+{v_exec}=function(...)
+local {v_code}={v_func}[{self._encode_number(2)}];
+local {v_const}={v_func}[{self._encode_number(1)}];
+local {v_nparams}={v_func}[{self._encode_number(3)}];
+local {v_children}={v_func}[{self._encode_number(5)}];
 
+local {v_stk}={{}};
+local {v_top}={self._encode_number(0)};
+local {v_pc}={self._encode_number(1)};
+local {v_locals}={{}};
+local {v_vararg}={{...}};
+local {v_nvar}=select('#',...);
 
-def obfuscate_file(input_path: str, output_path: str = None, **kwargs) -> str:
-    """Convenience function to obfuscate a Lua file"""
-    config = ObfuscationConfig(**kwargs)
-    obfuscator = LuaObfuscator(config)
-    result = obfuscator.obfuscate_file(input_path, output_path)
+for _i=1,{v_nparams} do
+{v_locals}[_i]={v_vararg}[_i];
+end;
+
+local function {v_push}(_v)
+{v_top}={v_top}+1;
+{v_stk}[{v_top}]=_v;
+end;
+
+local function {v_pop}()
+local _v={v_stk}[{v_top}];
+{v_stk}[{v_top}]=nil;
+{v_top}={v_top}-1;
+return _v;
+end;
+
+local function {v_peek}(_o)
+return {v_stk}[{v_top}-(_o or 0)];
+end;
+
+while {v_pc}<=#({v_code}) do
+local {v_instr}={v_code}[{v_pc}];
+local {v_op}={v_OP}[{v_instr}[1]];
+local {v_a}={v_instr}[2];
+local {v_b}={v_instr}[3];
+{v_pc}={v_pc}+1;
+
+if {v_op}=={self._encode_number(OpCode.LOAD_CONST.value)} then
+{v_push}({v_const}[{v_a}+1]);
+elseif {v_op}=={self._encode_number(OpCode.LOAD_NIL.value)} then
+{v_push}(nil);
+elseif {v_op}=={self._encode_number(OpCode.LOAD_TRUE.value)} then
+{v_push}(true);
+elseif {v_op}=={self._encode_number(OpCode.LOAD_FALSE.value)} then
+{v_push}(false);
+elseif {v_op}=={self._encode_number(OpCode.LOAD_VAR.value)} then
+{v_push}({v_locals}[{v_a}+1]);
+elseif {v_op}=={self._encode_number(OpCode.STORE_VAR.value)} then
+{v_locals}[{v_a}+1]={v_pop}();
+elseif {v_op}=={self._encode_number(OpCode.LOAD_GLOBAL.value)} then
+{v_push}({v_env}[{v_const}[{v_a}+1]]);
+elseif {v_op}=={self._encode_number(OpCode.STORE_GLOBAL.value)} then
+{v_env}[{v_const}[{v_a}+1]]={v_pop}();
+elseif {v_op}=={self._encode_number(OpCode.LOAD_UPVAL.value)} then
+{v_push}({v_upvals}[{v_a}+1]);
+elseif {v_op}=={self._encode_number(OpCode.STORE_UPVAL.value)} then
+{v_upvals}[{v_a}+1]={v_pop}();
+elseif {v_op}=={self._encode_number(OpCode.NEW_TABLE.value)} then
+{v_push}({{}});
+elseif {v_op}=={self._encode_number(OpCode.GET_TABLE.value)} then
+local _k={v_pop}();local _t={v_pop}();{v_push}(_t[_k]);
+elseif {v_op}=={self._encode_number(OpCode.SET_TABLE.value)} then
+local _v={v_pop}();local _k={v_pop}();local _t={v_pop}();_t[_k]=_v;
+elseif {v_op}=={self._encode_number(OpCode.GET_FIELD.value)} then
+local _t={v_pop}();{v_push}(_t[{v_const}[{v_a}+1]]);
+elseif {v_op}=={self._encode_number(OpCode.SET_FIELD.value)} then
+local _v={v_pop}();local _t={v_pop}();_t[{v_const}[{v_a}+1]]=_v;
+elseif {v_op}=={self._encode_number(OpCode.ADD.value)} then
+local _b={v_pop}();local _a={v_pop}();{v_push}(_a+_b);
+elseif {v_op}=={self._encode_number(OpCode.SUB.value)} then
+local _b={v_pop}();local _a={v_pop}();{v_push}(_a-_b);
+elseif {v_op}=={self._encode_number(OpCode.MUL.value)} then
+local _b={v_pop}();local _a={v_pop}();{v_push}(_a*_b);
+elseif {v_op}=={self._encode_number(OpCode.DIV.value)} then
+local _b={v_pop}();local _a={v_pop}();{v_push}(_a/_b);
+elseif {v_op}=={self._encode_number(OpCode.MOD.value)} then
+local _b={v_pop}();local _a={v_pop}();{v_push}(_a%_b);
+elseif {v_op}=={self._encode_number(OpCode.POW.value)} then
+local _b={v_pop}();local _a={v_pop}();{v_push}(_a^_b);
+elseif {v_op}=={self._encode_number(OpCode.UNM.value)} then
+{v_push}(-{v_pop}());
+elseif {v_op}=={self._encode_number(OpCode.CONCAT.value)} then
+local _b=tostring({v_pop}());local _a=tostring({v_pop}());{v_push}(_a.._b);
+elseif {v_op}=={self._encode_number(OpCode.LEN.value)} then
+{v_push}(#{v_pop}());
+elseif {v_op}=={self._encode_number(OpCode.EQ.value)} then
+local _b={v_pop}();local _a={v_pop}();{v_push}(_a==_b);
+elseif {v_op}=={self._encode_number(OpCode.NE.value)} then
+local _b={v_pop}();local _a={v_pop}();{v_push}(_a~=_b);
+elseif {v_op}=={self._encode_number(OpCode.LT.value)} then
+local _b={v_pop}();local _a={v_pop}();{v_push}(_a<_b);
+elseif {v_op}=={self._encode_number(OpCode.LE.value)} then
+local _b={v_pop}();local _a={v_pop}();{v_push}(_a<=_b);
+elseif {v_op}=={self._encode_number(OpCode.GT.value)} then
+local _b={v_pop}();local _a={v_pop}();{v_push}(_a>_b);
+elseif {v_op}=={self._encode_number(OpCode.GE.value)} then
+local _b={v_pop}();local _a={v_pop}();{v_push}(_a>=_b);
+elseif {v_op}=={self._encode_number(OpCode.NOT.value)} then
+{v_push}(not {v_pop}());
+elseif {v_op}=={self._encode_number(OpCode.JMP.value)} then
+{v_pc}={v_a}+1;
+elseif {v_op}=={self._encode_number(OpCode.JMP_IF.value)} then
+if {v_peek}() then {v_pc}={v_a}+1;end;
+elseif {v_op}=={self._encode_number(OpCode.JMP_IF_NOT.value)} then
+if not {v_pop}() then {v_pc}={v_a}+1;end;
+elseif {v_op}=={self._encode_number(OpCode.CALL.value)} then
+local _n={v_a};local _args={{}};
+for _i=_n,1,-1 do _args[_i]={v_pop}();end;
+local _f={v_pop}();
+local _r={{_f(unpack(_args))}};
+for _,_v in ipairs(_r) do {v_push}(_v);end;
+elseif {v_op}=={self._encode_number(OpCode.SELF.value)} then
+local _n={v_a};local _args={{}};
+for _i=_n,1,-1 do _args[_i]={v_pop}();end;
+local _m={v_pop}();local _s={v_pop}();
+local _r={{_m(_s,unpack(_args))}};
+for _,_v in ipairs(_r) do {v_push}(_v);end;
+elseif {v_op}=={self._encode_number(OpCode.RETURN.value)} then
+local _n={v_a};local _r={{}};
+for _i=_n,1,-1 do _r[_i]={v_pop}();end;
+return unpack(_r);
+elseif {v_op}=={self._encode_number(OpCode.CLOSURE.value)} then
+local _cf={v_children}[{v_a}+1];
+local _cl={v_create}(_cf,{v_env},{v_locals});
+{v_push}(_cl);
+elseif {v_op}=={self._encode_number(OpCode.VARARG.value)} then
+for _i={v_nparams}+1,{v_nvar} do {v_push}({v_vararg}[_i]);end;
+elseif {v_op}=={self._encode_number(OpCode.DUP.value)} then
+{v_push}({v_peek}());
+elseif {v_op}=={self._encode_number(OpCode.POP.value)} then
+{v_pop}();
+elseif {v_op}=={self._encode_number(OpCode.FORPREP.value)} then
+local _s={v_pop}();local _l={v_pop}();local _i={v_pop}();
+{v_locals}[{v_a}+1]=_i-_s;
+{v_push}(_i);{v_push}(_l);{v_push}(_s);
+elseif {v_op}=={self._encode_number(OpCode.FORLOOP.value)} then
+local _s={v_peek}(0);local _l={v_peek}(1);
+local _i={v_locals}[{v_a}+1]+_s;
+{v_locals}[{v_a}+1]=_i;
+if (_s>0 and _i<=_l) or (_s<=0 and _i>=_l) then
+{v_pc}={v_a};
+else
+{v_pop}();{v_pop}();{v_pop}();
+end;
+elseif {v_op}=={self._encode_number(OpCode.TFORLOOP.value)} then
+local _n={v_a};
+local _it={v_peek}(2);local _st={v_peek}(1);local _ct={v_peek}(0);
+local _r={{_it(_st,_ct)}};
+if _r[1]==nil then
+{v_pc}={v_a}+1;
+else
+for _i=1,_n do {v_locals}[_i]=_r[_i];end;
+{v_stk}[{v_top}]=_r[1];
+end;
+end;
+end;
+return nil;
+end;
+
+return {v_exec};
+end;
+
+return {v_create};'''
     
-    if not result.success:
-        raise ValueError(f"Obfuscation failed: {'; '.join(result.errors)}")
+    def _generate_wrapper_layers(self, core: str, bytecode_str: str) -> str:
+        """Generate multiple wrapper layers for protection"""
+        v_main = self._random_var()
+        v_bc = self._random_var()
+        v_vm = self._random_var()
+        v_run = self._random_var()
+        v_s = self._random_var()
+        v_ret = self._random_var()
+        
+        # String decoder function
+        str_decoder = self._generate_string_decoder()
+        str_fn = str_decoder.split('=')[0].replace('local ', '').strip()
+        
+        return f'''-- This file was obfuscated using LuaShield VM Obfuscator
+-- https://luashield.dev | Professional Lua Protection
+
+local {v_s}=string;local {v_ret}={{
+d=coroutine.yield,
+Q={v_s}.byte,
+R=function(...)(...)[...]=nil;end,
+g=function(_K,_U)
+_K[0B10101]=(function(_a,_b,_c)
+local _D={{_K[0B10101]}};
+if not(_b>_a)then else return;end;
+local _Z=(_a-_b+0X1);
+if _Z>=0X8 then 
+return _c[_b],_c[_b+1],_c[_b+0X2],_c[_b+0B11],_c[_b+4],_c[_b+5],_c[_b+0B110],_c[_b+0X07],_D[1](_a,_b+8,_c);
+else 
+return _c[_b],_D[1](_a,_b+1,_c);
+end;
+end);
+(_K)[{self._encode_number(22)}]=(select);
+_K[{self._encode_number(23)}]=nil;
+end,
+e=coroutine.wrap,
+t={v_s}.sub,
+UU={v_s}.gsub,
+JU=bit32 and bit32.bnot or function(_x)return~_x;end,
+q=bit32 and bit32.bor or function(_a,_b)return _a|_b;end,
+X={v_s}.match,
+I={v_s}.unpack or unpack,
+a=table.move or function(_t,_a,_b,_c,_d)for _i=_a,_b do _d[_c+_i-_a]=_t[_i];end;return _d;end,
+}};
+
+{str_decoder}
+
+local _S={str_fn};
+
+local {v_bc}={bytecode_str};
+
+local {v_vm}=(function()
+{core}
+end)();
+
+local {v_main}={v_vm}({v_bc});
+
+return {v_main}(...);'''
     
-    return result.output
+    def _generate_anti_analysis(self) -> str:
+        """Generate anti-analysis code"""
+        v1 = self._random_var()
+        v2 = self._random_var()
+        v3 = self._random_var()
+        
+        checks = []
+        
+        # Environment check
+        checks.append(f'''
+(function()
+local {v1}=_G or _ENV;
+local {v2}={{pcall,error,type,pairs}};
+local {v3}=(function(_t)
+for _k,_v in pairs(_t) do
+if type(_v)~="function" then return false;end;
+end;
+return true;
+end)({v2});
+if not {v3} then return;end;
+end)();''')
+        
+        return '\n'.join(checks)
+    
+    def generate(self, func: CompiledFunction, mode: str = "loadstring") -> str:
+        """Generate complete obfuscated VM code"""
+        # Serialize bytecode
+        bytecode_str = self._serialize_function(func)
+        
+        # Generate VM core
+        vm_core = self._generate_vm_core()
+        
+        # Generate anti-analysis
+        anti_analysis = self._generate_anti_analysis()
+        
+        # Wrap everything
+        output = self._generate_wrapper_layers(vm_core, bytecode_str)
+        
+        # Add anti-analysis
+        output = anti_analysis + '\n' + output
+        
+        return output
