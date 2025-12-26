@@ -1,42 +1,34 @@
 import random
-import string
-import hashlib
 import time
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any
 from dataclasses import dataclass, field
 
 from .lexer import LuaLexer
-from .parser import LuaParser, Chunk
+from .parser import LuaParser
 from .compiler import BytecodeCompiler, CompiledFunction
 from .vm_generator import VMGenerator
 
 
 @dataclass
 class ObfuscationConfig:
-    """Configuration for obfuscation options"""
     use_vm: bool = True
-    vm_randomize_opcodes: bool = True
     encrypt_strings: bool = True
     encrypt_bytecode: bool = True
     encryption_method: str = 'xor'
-    encryption_password: str = None
     rename_variables: bool = True
-    rename_globals: bool = False
-    variable_prefix: str = ''
     add_junk_code: bool = True
     junk_code_ratio: float = 0.3
     add_anti_tamper: bool = True
     add_anti_dump: bool = True
-    add_integrity_check: bool = True
     mode: str = 'loadstring'
     minify: bool = True
     add_watermark: bool = True
     watermark_text: str = "Protected by LuaShield"
+    target_ratio: float = 6.0  # Target 600% output ratio
 
 
 @dataclass
 class ObfuscationResult:
-    """Result of obfuscation"""
     success: bool
     output: str
     errors: List[str] = field(default_factory=list)
@@ -45,26 +37,7 @@ class ObfuscationResult:
 
 
 class LuaObfuscator:
-    """Main Lua Obfuscator - Professional Grade"""
-    
-    BUILTIN_GLOBALS = {
-        'print', 'error', 'warn', 'assert', 'type', 'typeof', 'tostring',
-        'tonumber', 'pairs', 'ipairs', 'next', 'select', 'unpack',
-        'pcall', 'xpcall', 'rawget', 'rawset', 'rawequal', 'rawlen',
-        'setmetatable', 'getmetatable', 'setfenv', 'getfenv',
-        'collectgarbage', 'loadstring', 'loadfile', 'dofile', 'load',
-        'require', 'module', 'package', 'table', 'string', 'math',
-        'os', 'io', 'debug', 'coroutine', 'bit32', 'bit', 'utf8',
-        'game', 'workspace', 'script', 'plugin', 'shared', '_G', '_VERSION',
-        'Instance', 'Vector3', 'Vector2', 'CFrame', 'Color3', 'BrickColor',
-        'UDim', 'UDim2', 'Rect', 'Region3', 'Ray', 'Faces', 'Axes',
-        'TweenInfo', 'Enum', 'Random', 'NumberRange', 'NumberSequence',
-        'ColorSequence', 'PhysicalProperties', 'RaycastParams',
-        'OverlapParams', 'DockWidgetPluginGuiInfo',
-        'wait', 'Wait', 'delay', 'Delay', 'spawn', 'Spawn', 'tick', 'time',
-        'elapsedTime', 'settings', 'stats', 'UserSettings', 'task',
-        'true', 'false', 'nil', 'self'
-    }
+    """Professional Lua Obfuscator - Dense Output"""
     
     def __init__(self, config: ObfuscationConfig = None):
         self.config = config or ObfuscationConfig()
@@ -73,7 +46,6 @@ class LuaObfuscator:
         self.stats: Dict[str, Any] = {}
     
     def obfuscate(self, source: str) -> ObfuscationResult:
-        """Obfuscate Lua source code"""
         start_time = time.time()
         self.errors = []
         self.warnings = []
@@ -83,126 +55,78 @@ class LuaObfuscator:
         }
         
         try:
-            # Validate
-            if not self._validate_input(source):
-                return ObfuscationResult(
-                    success=False, output='', errors=self.errors
-                )
+            if not self._validate(source):
+                return ObfuscationResult(success=False, output='', errors=self.errors)
             
-            # Lexical Analysis
             lexer = LuaLexer(source)
             tokens = lexer.tokenize()
-            
             if lexer.get_errors():
                 self.warnings.extend(lexer.get_errors())
             
-            # Parsing
             parser = LuaParser(tokens)
             ast = parser.parse()
-            
             if parser.get_errors():
                 self.warnings.extend(parser.get_errors())
             
-            # Compilation
             compiler = BytecodeCompiler()
-            bytecode, compile_errors = compiler.compile(ast)
-            
-            if compile_errors:
-                self.warnings.extend(compile_errors)
+            bytecode, errs = compiler.compile(ast)
+            if errs:
+                self.warnings.extend(errs)
             
             self.stats['constants'] = len(bytecode.constants)
             self.stats['instructions'] = len(bytecode.instructions)
             self.stats['functions'] = len(bytecode.children) + 1
             
-            # Generate protected code
-            output = self._generate_protected_code(bytecode)
+            output = self._generate(bytecode)
             
             self.stats['output_size'] = len(output)
             self.stats['output_lines'] = output.count('\n') + 1
             self.stats['time_ms'] = int((time.time() - start_time) * 1000)
-            self.stats['compression_ratio'] = round(
-                len(output) / len(source) * 100, 2
-            ) if source else 0
+            self.stats['compression_ratio'] = round(len(output) / len(source) * 100, 2) if source else 0
             
             return ObfuscationResult(
-                success=True,
-                output=output,
-                errors=self.errors,
-                warnings=self.warnings,
-                stats=self.stats
+                success=True, output=output,
+                errors=self.errors, warnings=self.warnings, stats=self.stats
             )
-            
         except Exception as e:
-            self.errors.append(f"Obfuscation failed: {str(e)}")
-            return ObfuscationResult(
-                success=False, output='', errors=self.errors, warnings=self.warnings
-            )
+            self.errors.append(f"Failed: {e}")
+            return ObfuscationResult(success=False, output='', errors=self.errors)
     
-    def _validate_input(self, source: str) -> bool:
-        """Validate input source"""
+    def _validate(self, source: str) -> bool:
         if not source or not source.strip():
-            self.errors.append("Empty source code")
+            self.errors.append("Empty source")
             return False
-        
-        if source.startswith('\x1bLua') or source.startswith('\x1b\x4c\x75\x61'):
-            self.errors.append("Luac bytecode is not supported")
+        if source.startswith('\x1bLua'):
+            self.errors.append("Luac not supported")
             return False
-        
-        try:
-            source.encode('utf-8')
-        except UnicodeError:
-            self.errors.append("Source contains invalid characters")
-            return False
-        
         return True
     
-    def _generate_protected_code(self, bytecode: CompiledFunction) -> str:
-        """Generate protected Lua code with professional VM"""
-        enc_key = bytes([random.randint(0, 255) for _ in range(32)])
-        
-        vm_gen = VMGenerator(
-            key=enc_key,
-            use_encryption=self.config.encrypt_bytecode
-        )
-        
+    def _generate(self, bytecode: CompiledFunction) -> str:
+        key = bytes([random.randint(0, 255) for _ in range(32)])
+        vm_gen = VMGenerator(key=key, use_encryption=self.config.encrypt_bytecode)
         return vm_gen.generate(bytecode, mode=self.config.mode)
     
     def obfuscate_file(self, input_path: str, output_path: str = None) -> ObfuscationResult:
-        """Obfuscate a Lua file"""
         if input_path.endswith('.luac'):
-            return ObfuscationResult(
-                success=False, output='',
-                errors=["Luac bytecode files are not supported"]
-            )
+            return ObfuscationResult(success=False, output='', errors=["Luac not supported"])
         
         try:
             with open(input_path, 'r', encoding='utf-8') as f:
                 source = f.read()
         except Exception as e:
-            return ObfuscationResult(
-                success=False, output='',
-                errors=[f"Failed to read file: {str(e)}"]
-            )
+            return ObfuscationResult(success=False, output='', errors=[str(e)])
         
         result = self.obfuscate(source)
         
         if result.success and output_path:
-            try:
-                with open(output_path, 'w', encoding='utf-8') as f:
-                    f.write(result.output)
-            except Exception as e:
-                result.warnings.append(f"Failed to write output: {str(e)}")
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(result.output)
         
         return result
 
 
 def obfuscate(source: str, **kwargs) -> str:
-    """Convenience function to obfuscate Lua code"""
-    config = ObfuscationConfig(**kwargs)
-    obfuscator = LuaObfuscator(config)
-    result = obfuscator.obfuscate(source)
-    
+    result = LuaObfuscator(ObfuscationConfig(**kwargs)).obfuscate(source)
     if not result.success:
-        raise ValueError(f"Obfuscation failed: {'; '.join(result.errors)}")
-    
+        raise ValueError('; '.join(result.errors))
     return result.output
