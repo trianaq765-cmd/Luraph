@@ -2,11 +2,14 @@
 flask==3.0.0
 flask-cors==4.0.0
 gunicorn==21.2.0
+werkzeug==3.0.1
 
 # Encryption
 pycryptodome==3.20.0
 
 # Discord Bot
 discord.py==2.3.2
-python-dotenv==1.0.0
 aiohttp==3.9.1
+
+# Utilities
+python-dotenv==1.0.0
