@@ -1,24 +1,22 @@
 services:
-  # Web Service
   - type: web
-    name: luashield-web
-    env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    name: luashield
+    runtime: python
+    region: singapore
+    plan: free
+    
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: python app.py
+    
+    healthCheckPath: /api/health
+    autoDeploy: true
+    
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11.0
+        value: "3.11.10"
       - key: SECRET_KEY
         generateValue: true
-
-  # Discord Bot (Background Worker)
-  - type: worker
-    name: luashield-bot
-    env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python bot.py
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
       - key: DISCORD_BOT_TOKEN
-        sync: false  # Set manually in Render dashboard
+        sync: false
+      - key: BOT_PREFIX
+        value: "!"
