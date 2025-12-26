@@ -1,6 +1,7 @@
 services:
+  # Web Service
   - type: web
-    name: luashield-vm-obfuscator
+    name: luashield-web
     env: python
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
@@ -9,3 +10,15 @@ services:
         value: 3.11.0
       - key: SECRET_KEY
         generateValue: true
+
+  # Discord Bot (Background Worker)
+  - type: worker
+    name: luashield-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: DISCORD_BOT_TOKEN
+        sync: false  # Set manually in Render dashboard
