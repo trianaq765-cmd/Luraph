@@ -1,0 +1,1222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LuaShield VM Obfuscator</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --border-color: #30363d;
+            --text-primary: #f0f6fc;
+            --text-secondary: #8b949e;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --accent-yellow: #d29922;
+            --accent-purple: #a371f7;
+            --gradient-1: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --gradient-2: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Background animation */
+        .bg-animation {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+            z-index: -1;
+        }
+
+        .bg-animation::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 20% 80%, rgba(88, 166, 255, 0.05) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 20%, rgba(163, 113, 247, 0.05) 0%, transparent 50%);
+            animation: float 20s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0); }
+            50% { transform: translate(-2%, -2%); }
+        }
+
+        /* Header */
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: var(--gradient-1);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+        }
+
+        .logo-text {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: var(--gradient-1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .logo-version {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            background: var(--bg-tertiary);
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+        }
+
+        .header-links {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .header-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            transition: all 0.2s;
+            font-size: 0.875rem;
+        }
+
+        .header-link:hover {
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+        }
+
+        /* Main container */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Info banner */
+        .info-banner {
+            background: linear-gradient(135deg, rgba(88, 166, 255, 0.1), rgba(163, 113, 247, 0.1));
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1rem 1.5rem;
+            margin-bottom: 2rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .info-banner-icon {
+            font-size: 1.5rem;
+        }
+
+        .info-banner-text {
+            flex: 1;
+        }
+
+        .info-banner-title {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .info-banner-desc {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        /* Main grid */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        @media (max-width: 1024px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Panel */
+        .panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-title {
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .panel-badge {
+            font-size: 0.7rem;
+            padding: 0.2rem 0.5rem;
+            background: var(--accent-green);
+            color: var(--bg-primary);
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        .panel-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .panel-body {
+            padding: 0;
+        }
+
+        /* Code editor */
+        .code-editor {
+            width: 100%;
+            min-height: 400px;
+            background: var(--bg-primary);
+            border: none;
+            padding: 1rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            color: var(--text-primary);
+            resize: vertical;
+            outline: none;
+            line-height: 1.6;
+        }
+
+        .code-editor::placeholder {
+            color: var(--text-secondary);
+        }
+
+        /* Options panel */
+        .options-panel {
+            grid-column: 1 / -1;
+        }
+
+        .options-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            padding: 1.5rem;
+        }
+
+        .option-group {
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 1rem;
+        }
+
+        .option-group-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            margin-bottom: 0.75rem;
+        }
+
+        .option-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+        }
+
+        .option-label {
+            font-size: 0.875rem;
+            color: var(--text-primary);
+        }
+
+        .option-desc {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        /* Toggle switch */
+        .toggle {
+            position: relative;
+            width: 44px;
+            height: 24px;
+        }
+
+        .toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            transition: all 0.3s;
+        }
+
+        .toggle-slider::before {
+            position: absolute;
+            content: '';
+            height: 18px;
+            width: 18px;
+            left: 2px;
+            bottom: 2px;
+            background: var(--text-secondary);
+            border-radius: 50%;
+            transition: all 0.3s;
+        }
+
+        .toggle input:checked + .toggle-slider {
+            background: var(--accent-blue);
+            border-color: var(--accent-blue);
+        }
+
+        .toggle input:checked + .toggle-slider::before {
+            transform: translateX(20px);
+            background: white;
+        }
+
+        /* Select */
+        .select-wrapper {
+            position: relative;
+        }
+
+        .select {
+            appearance: none;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 0.5rem 2rem 0.5rem 0.75rem;
+            font-size: 0.875rem;
+            color: var(--text-primary);
+            cursor: pointer;
+            min-width: 140px;
+        }
+
+        .select:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+
+        .select-wrapper::after {
+            content: '▼';
+            position: absolute;
+            right: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.625rem;
+            color: var(--text-secondary);
+            pointer-events: none;
+        }
+
+        /* Range slider */
+        .range-container {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .range {
+            flex: 1;
+            -webkit-appearance: none;
+            height: 4px;
+            background: var(--bg-primary);
+            border-radius: 2px;
+            outline: none;
+        }
+
+        .range::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--accent-blue);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .range-value {
+            font-size: 0.875rem;
+            color: var(--accent-blue);
+            min-width: 40px;
+            text-align: right;
+        }
+
+        /* Presets */
+        .presets-row {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .preset-btn {
+            padding: 0.5rem 1rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .preset-btn:hover {
+            border-color: var(--accent-blue);
+            background: rgba(88, 166, 255, 0.1);
+        }
+
+        .preset-btn.active {
+            border-color: var(--accent-blue);
+            background: var(--accent-blue);
+            color: white;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: var(--gradient-1);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(88, 166, 255, 0.3);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--accent-blue);
+        }
+
+        .btn-icon {
+            padding: 0.5rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-icon:hover {
+            color: var(--text-primary);
+            border-color: var(--accent-blue);
+        }
+
+        /* Action bar */
+        .action-bar {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            padding: 1.5rem;
+            grid-column: 1 / -1;
+        }
+
+        /* Stats */
+        .stats-bar {
+            display: flex;
+            gap: 1.5rem;
+            padding: 1rem 1.5rem;
+            background: var(--bg-tertiary);
+            border-radius: 0 0 12px 12px;
+            flex-wrap: wrap;
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .stat-value {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--accent-blue);
+        }
+
+        /* Status messages */
+        .status {
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem;
+            display: none;
+        }
+
+        .status.show {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .status.success {
+            background: rgba(63, 185, 80, 0.1);
+            border: 1px solid rgba(63, 185, 80, 0.3);
+            color: var(--accent-green);
+        }
+
+        .status.error {
+            background: rgba(248, 81, 73, 0.1);
+            border: 1px solid rgba(248, 81, 73, 0.3);
+            color: var(--accent-red);
+        }
+
+        .status.loading {
+            background: rgba(88, 166, 255, 0.1);
+            border: 1px solid rgba(88, 166, 255, 0.3);
+            color: var(--accent-blue);
+        }
+
+        /* Spinner */
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid transparent;
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        .footer a {
+            color: var(--accent-blue);
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .header-content {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .options-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .action-bar {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-animation"></div>
+
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">
+                <div class="logo-icon">🛡️</div>
+                <span class="logo-text">LuaShield</span>
+                <span class="logo-version">v2.1.0</span>
+            </div>
+            <div class="header-links">
+                <a href="https://github.com/luashield/vm-obfuscator" class="header-link" target="_blank">📦 GitHub</a>
+                <a href="/api/stats" class="header-link" target="_blank">📊 API</a>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="info-banner">
+            <span class="info-banner-icon">✨</span>
+            <div class="info-banner-text">
+                <div class="info-banner-title">Real VM-Based Obfuscation</div>
+                <div class="info-banner-desc">
+                    Supports <strong>.lua</strong> and <strong>.txt</strong> files. 
+                    Bytecode (.luac) is <strong>NOT</strong> supported.
+                    Compatible with Roblox executors and loadstring.
+                </div>
+            </div>
+        </div>
+
+        <div class="main-grid">
+            <!-- Input Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        📥 Input Code
+                        <span class="panel-badge">LUA/TXT</span>
+                    </div>
+                    <div class="panel-actions">
+                        <button class="btn-icon" onclick="loadSample()" title="Load Sample">
+                            📋
+                        </button>
+                        <button class="btn-icon" onclick="clearInput()" title="Clear">
+                            🗑️
+                        </button>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <textarea 
+                        id="inputCode" 
+                        class="code-editor" 
+                        placeholder="-- Paste your Lua code here...
+
+local function hello(name)
+    print('Hello, ' .. name .. '!')
+end
+
+hello('World')"
+                    ></textarea>
+                </div>
+                <div id="inputStatus" class="status"></div>
+            </div>
+
+            <!-- Output Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        📤 Obfuscated Output
+                    </div>
+                    <div class="panel-actions">
+                        <button class="btn-icon" onclick="copyOutput()" title="Copy">
+                            📋
+                        </button>
+                        <button class="btn-icon" onclick="downloadOutput()" title="Download">
+                            💾
+                        </button>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <textarea 
+                        id="outputCode" 
+                        class="code-editor" 
+                        placeholder="-- Obfuscated code will appear here..."
+                        readonly
+                    ></textarea>
+                </div>
+                <div class="stats-bar" id="statsBar" style="display: none;">
+                    <div class="stat-item">
+                        <span class="stat-label">Original:</span>
+                        <span class="stat-value" id="statOriginal">0 bytes</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Output:</span>
+                        <span class="stat-value" id="statOutput">0 bytes</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Ratio:</span>
+                        <span class="stat-value" id="statRatio">0%</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Time:</span>
+                        <span class="stat-value" id="statTime">0ms</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Options Panel -->
+            <div class="panel options-panel">
+                <div class="panel-header">
+                    <div class="panel-title">⚙️ Obfuscation Options</div>
+                </div>
+                
+                <!-- Presets -->
+                <div class="presets-row">
+                    <button class="preset-btn" onclick="applyPreset('light')">💡 Light</button>
+                    <button class="preset-btn active" onclick="applyPreset('medium')">⚡ Medium</button>
+                    <button class="preset-btn" onclick="applyPreset('heavy')">🔒 Heavy</button>
+                    <button class="preset-btn" onclick="applyPreset('maximum')">🛡️ Maximum</button>
+                    <button class="preset-btn" onclick="applyPreset('roblox')">🎮 Roblox</button>
+                </div>
+
+                <div class="options-grid">
+                    <!-- VM & Encryption -->
+                    <div class="option-group">
+                        <div class="option-group-title">🔐 VM & Encryption</div>
+                        
+                        <div class="option-item">
+                            <div>
+                                <div class="option-label">Use VM</div>
+                                <div class="option-desc">Virtual machine execution</div>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" id="optUseVm" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="option-item">
+                            <div>
+                                <div class="option-label">Encrypt Strings</div>
+                                <div class="option-desc">Encrypt string constants</div>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" id="optEncryptStrings" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="option-item">
+                            <div>
+                                <div class="option-label">Encryption Method</div>
+                            </div>
+                            <div class="select-wrapper">
+                                <select id="optEncryptionMethod" class="select">
+                                    <option value="xor">XOR (Fast)</option>
+                                    <option value="aes256">AES-256</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Variables -->
+                    <div class="option-group">
+                        <div class="option-group-title">🔤 Variables</div>
+                        
+                        <div class="option-item">
+                            <div>
+                                <div class="option-label">Rename Variables</div>
+                                <div class="option-desc">Obfuscate variable names</div>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" id="optRenameVars" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="option-item">
+                            <div>
+                                <div class="option-label">Naming Style</div>
+                            </div>
+                            <div class="select-wrapper">
+                                <select id="optVarStyle" class="select">
+                                    <option value="random">Random</option>
+                                    <option value="underscore">Underscore</option>
+                                    <option value="similar">Similar Chars</option>
+                                    <option value="hex">Hex</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Code Mutation -->
+                    <div class="option-group">
+                        <div class="option-group-title">🧬 Code Mutation</div>
+                        
+                        <div class="option-item">
+                            <div>
+                                <div class="option-label">Add Junk Code</div>
+                                <div class="option-desc">Insert dead code</div>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" id="optJunkCode" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="option-item">
+                            <div>
+                                <div class="option-label">Junk Intensity</div>
+                            </div>
+                            <div class="range-container">
+                                <input type="range" id="optJunkIntensity" class="range" 
+                                       min="0" max="100" value="30">
+                                <span class="range-value" id="junkIntensityValue">30%</span>
+                            </div>
+                        </div>
+
+                        <div class="option-item">
+                            <div>
+                                <div class="option-label">Minify Output</div>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" id="optMinify" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Protection -->
+                    <div class="option-group">
+                        <div class="option-group-title">🛡️ Protection</div>
+                        
+                        <div class="option-item">
+                            <div>
+                                <div class="option-label">Anti-Tamper</div>
+                                <div class="option-desc">Integrity checks</div>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" id="optAntiTamper" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="option-item">
+                            <div>
+                                <div class="option-label">Anti-Dump</div>
+                                <div class="option-desc">Prevent memory dump</div>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" id="optAntiDump" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="option-item">
+                            <div>
+                                <div class="option-label">Output Mode</div>
+                            </div>
+                            <div class="select-wrapper">
+                                <select id="optMode" class="select">
+                                    <option value="loadstring">Loadstring</option>
+                                    <option value="raw">Raw</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Bar -->
+            <div class="action-bar">
+                <button class="btn btn-secondary" onclick="validateCode()">
+                    ✅ Validate Syntax
+                </button>
+                <button class="btn btn-primary" onclick="obfuscateCode()" id="obfuscateBtn">
+                    🚀 Obfuscate Code
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>
+            LuaShield VM Obfuscator &copy; 2024 | 
+            <a href="https://github.com/luashield/vm-obfuscator">GitHub</a> | 
+            Built with ❤️ for the Roblox community
+        </p>
+        <p style="margin-top: 0.5rem; font-size: 0.75rem;">
+            Supports: .lua, .txt files | NOT supported: .luac bytecode
+        </p>
+    </footer>
+
+    <script>
+        // Presets
+        const presets = {
+            light: {
+                use_vm: true,
+                encrypt_strings: false,
+                encryption_method: 'xor',
+                rename_variables: true,
+                variable_style: 'random',
+                add_junk_code: false,
+                junk_intensity: 10,
+                add_anti_tamper: false,
+                add_anti_dump: false,
+                minify: true,
+                mode: 'loadstring'
+            },
+            medium: {
+                use_vm: true,
+                encrypt_strings: true,
+                encryption_method: 'xor',
+                rename_variables: true,
+                variable_style: 'random',
+                add_junk_code: true,
+                junk_intensity: 30,
+                add_anti_tamper: true,
+                add_anti_dump: false,
+                minify: true,
+                mode: 'loadstring'
+            },
+            heavy: {
+                use_vm: true,
+                encrypt_strings: true,
+                encryption_method: 'xor',
+                rename_variables: true,
+                variable_style: 'similar',
+                add_junk_code: true,
+                junk_intensity: 50,
+                add_anti_tamper: true,
+                add_anti_dump: true,
+                minify: true,
+                mode: 'loadstring'
+            },
+            maximum: {
+                use_vm: true,
+                encrypt_strings: true,
+                encryption_method: 'aes256',
+                rename_variables: true,
+                variable_style: 'similar',
+                add_junk_code: true,
+                junk_intensity: 70,
+                add_anti_tamper: true,
+                add_anti_dump: true,
+                minify: true,
+                mode: 'loadstring'
+            },
+            roblox: {
+                use_vm: true,
+                encrypt_strings: true,
+                encryption_method: 'xor',
+                rename_variables: true,
+                variable_style: 'random',
+                add_junk_code: true,
+                junk_intensity: 25,
+                add_anti_tamper: true,
+                add_anti_dump: true,
+                minify: true,
+                mode: 'loadstring'
+            }
+        };
+
+        // Apply preset
+        function applyPreset(name) {
+            const preset = presets[name];
+            if (!preset) return;
+
+            document.getElementById('optUseVm').checked = preset.use_vm;
+            document.getElementById('optEncryptStrings').checked = preset.encrypt_strings;
+            document.getElementById('optEncryptionMethod').value = preset.encryption_method;
+            document.getElementById('optRenameVars').checked = preset.rename_variables;
+            document.getElementById('optVarStyle').value = preset.variable_style;
+            document.getElementById('optJunkCode').checked = preset.add_junk_code;
+            document.getElementById('optJunkIntensity').value = preset.junk_intensity;
+            document.getElementById('junkIntensityValue').textContent = preset.junk_intensity + '%';
+            document.getElementById('optAntiTamper').checked = preset.add_anti_tamper;
+            document.getElementById('optAntiDump').checked = preset.add_anti_dump;
+            document.getElementById('optMinify').checked = preset.minify;
+            document.getElementById('optMode').value = preset.mode;
+
+            // Update active button
+            document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        // Get current options
+        function getOptions() {
+            return {
+                use_vm: document.getElementById('optUseVm').checked,
+                encrypt_strings: document.getElementById('optEncryptStrings').checked,
+                encrypt_bytecode: document.getElementById('optEncryptStrings').checked,
+                encryption_method: document.getElementById('optEncryptionMethod').value,
+                rename_variables: document.getElementById('optRenameVars').checked,
+                variable_style: document.getElementById('optVarStyle').value,
+                add_junk_code: document.getElementById('optJunkCode').checked,
+                junk_intensity: parseInt(document.getElementById('optJunkIntensity').value) / 100,
+                add_anti_tamper: document.getElementById('optAntiTamper').checked,
+                add_anti_dump: document.getElementById('optAntiDump').checked,
+                minify: document.getElementById('optMinify').checked,
+                mode: document.getElementById('optMode').value
+            };
+        }
+
+        // Update junk intensity display
+        document.getElementById('optJunkIntensity').addEventListener('input', function() {
+            document.getElementById('junkIntensityValue').textContent = this.value + '%';
+        });
+
+        // Show status
+        function showStatus(elementId, type, message) {
+            const status = document.getElementById(elementId);
+            status.className = `status show ${type}`;
+            
+            let icon = '';
+            if (type === 'success') icon = '✅';
+            else if (type === 'error') icon = '❌';
+            else if (type === 'loading') icon = '<div class="spinner"></div>';
+            
+            status.innerHTML = `${icon} ${message}`;
+        }
+
+        function hideStatus(elementId) {
+            document.getElementById(elementId).className = 'status';
+        }
+
+        // Load sample code
+        function loadSample() {
+            document.getElementById('inputCode').value = `-- Sample Lua Script
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local function greetPlayer(player)
+    local name = player.Name
+    local displayName = player.DisplayName
+    
+    print("Welcome, " .. displayName .. "!")
+    
+    if name ~= displayName then
+        print("(Username: " .. name .. ")")
+    end
+    
+    return true
+end
+
+local function onPlayerAdded(player)
+    local success = greetPlayer(player)
+    
+    if success then
+        -- Do something after greeting
+        wait(1)
+        print("Player greeting complete!")
+    end
+end
+
+Players.PlayerAdded:Connect(onPlayerAdded)
+
+-- Greet existing players
+for _, player in ipairs(Players:GetPlayers()) do
+    greetPlayer(player)
+end
+
+print("Script loaded successfully!")`;
+        }
+
+        // Clear input
+        function clearInput() {
+            document.getElementById('inputCode').value = '';
+            document.getElementById('outputCode').value = '';
+            hideStatus('inputStatus');
+            document.getElementById('statsBar').style.display = 'none';
+        }
+
+        // Copy output
+        function copyOutput() {
+            const output = document.getElementById('outputCode');
+            output.select();
+            document.execCommand('copy');
+            
+            showStatus('inputStatus', 'success', 'Copied to clipboard!');
+            setTimeout(() => hideStatus('inputStatus'), 2000);
+        }
+
+        // Download output
+        function downloadOutput() {
+            const output = document.getElementById('outputCode').value;
+            if (!output) {
+                showStatus('inputStatus', 'error', 'No output to download');
+                return;
+            }
+
+            const blob = new Blob([output], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'obfuscated_' + Date.now() + '.lua';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Validate code
+        async function validateCode() {
+            const source = document.getElementById('inputCode').value;
+            
+            if (!source.trim()) {
+                showStatus('inputStatus', 'error', 'Please enter some code first');
+                return;
+            }
+
+            showStatus('inputStatus', 'loading', 'Validating...');
+
+            try {
+                const response = await fetch('/api/validate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ source })
+                });
+
+                const data = await response.json();
+
+                if (data.valid) {
+                    showStatus('inputStatus', 'success', 
+                        `Valid! ${data.stats.tokens} tokens, ${data.stats.lines} lines`);
+                } else {
+                    showStatus('inputStatus', 'error', 
+                        `Invalid: ${data.errors.join(', ')}`);
+                }
+            } catch (error) {
+                showStatus('inputStatus', 'error', `Error: ${error.message}`);
+            }
+        }
+
+        // Obfuscate code
+        async function obfuscateCode() {
+            const source = document.getElementById('inputCode').value;
+            
+            if (!source.trim()) {
+                showStatus('inputStatus', 'error', 'Please enter some code first');
+                return;
+            }
+
+            const btn = document.getElementById('obfuscateBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="spinner"></div> Processing...';
+            
+            showStatus('inputStatus', 'loading', 'Obfuscating...');
+
+            try {
+                const response = await fetch('/api/obfuscate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        source,
+                        options: getOptions()
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('outputCode').value = data.output;
+                    
+                    // Show stats
+                    const stats = data.stats;
+                    document.getElementById('statOriginal').textContent = 
+                        formatBytes(stats.original_size);
+                    document.getElementById('statOutput').textContent = 
+                        formatBytes(stats.output_size);
+                    document.getElementById('statRatio').textContent = 
+                        stats.compression_ratio + '%';
+                    document.getElementById('statTime').textContent = 
+                        stats.time_ms + 'ms';
+                    document.getElementById('statsBar').style.display = 'flex';
+
+                    showStatus('inputStatus', 'success', 'Obfuscation complete!');
+                    
+                    if (data.warnings && data.warnings.length > 0) {
+                        console.warn('Warnings:', data.warnings);
+                    }
+                } else {
+                    showStatus('inputStatus', 'error', `Error: ${data.error}`);
+                }
+            } catch (error) {
+                showStatus('inputStatus', 'error', `Error: ${error.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🚀 Obfuscate Code';
+            }
+        }
+
+        // Format bytes
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            // Apply default preset
+            applyPreset('medium');
+        });
+    </script>
+</body>
+  </html>
