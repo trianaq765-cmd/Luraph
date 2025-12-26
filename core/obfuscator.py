@@ -22,7 +22,7 @@ class ObfuscationConfig:
     # Encryption
     encrypt_strings: bool = True
     encrypt_bytecode: bool = True
-    encryption_method: str = 'xor'  # 'aes256' or 'xor'
+    encryption_method: str = 'xor'
     encryption_password: str = None
     
     # Variable Renaming
@@ -32,7 +32,7 @@ class ObfuscationConfig:
     
     # Code Mutation
     add_junk_code: bool = True
-    junk_code_ratio: float = 0.3  # 30% junk code
+    junk_code_ratio: float = 0.3
     
     # Anti-Tampering
     add_anti_tamper: bool = True
@@ -40,7 +40,7 @@ class ObfuscationConfig:
     add_integrity_check: bool = True
     
     # Output
-    mode: str = 'loadstring'  # 'loadstring' or 'raw'
+    mode: str = 'loadstring'
     minify: bool = True
     add_watermark: bool = True
     watermark_text: str = "Protected by LuaShield"
@@ -62,46 +62,28 @@ class LuaObfuscator:
     Integrates all obfuscation components
     """
     
-    # Roblox/Lua built-in globals that should not be renamed
     BUILTIN_GLOBALS = {
-        # Lua standard
-        'print', 'error', 'warn', 'assert', 'type', 'typeof', 'tostring', 
+        'print', 'error', 'warn', 'assert', 'type', 'typeof', 'tostring',
         'tonumber', 'pairs', 'ipairs', 'next', 'select', 'unpack',
         'pcall', 'xpcall', 'rawget', 'rawset', 'rawequal', 'rawlen',
         'setmetatable', 'getmetatable', 'setfenv', 'getfenv',
         'collectgarbage', 'loadstring', 'loadfile', 'dofile', 'load',
         'require', 'module', 'package',
-        
-        # Tables
         'table', 'string', 'math', 'os', 'io', 'debug', 'coroutine', 'bit32', 'bit',
         'utf8',
-        
-        # Roblox globals
         'game', 'workspace', 'script', 'plugin', 'shared', '_G', '_VERSION',
         'Instance', 'Vector3', 'Vector2', 'CFrame', 'Color3', 'BrickColor',
         'UDim', 'UDim2', 'Rect', 'Region3', 'Ray', 'Faces', 'Axes',
         'TweenInfo', 'Enum', 'Random', 'NumberRange', 'NumberSequence',
         'ColorSequence', 'PhysicalProperties', 'RaycastParams',
         'OverlapParams', 'DockWidgetPluginGuiInfo',
-        
-        # Roblox services (commonly used)
         'wait', 'Wait', 'delay', 'Delay', 'spawn', 'Spawn', 'tick', 'time',
         'elapsedTime', 'settings', 'stats', 'UserSettings',
-        
-        # Task library
         'task',
-        
-        # Special
         'true', 'false', 'nil', 'self'
     }
     
     def __init__(self, config: ObfuscationConfig = None):
-        """
-        Initialize obfuscator
-        
-        Args:
-            config: Obfuscation configuration
-        """
         self.config = config or ObfuscationConfig()
         self.variable_map: Dict[str, str] = {}
         self.string_encryptor: Optional[StringEncryptor] = None
@@ -110,15 +92,7 @@ class LuaObfuscator:
         self.stats: Dict[str, Any] = {}
     
     def obfuscate(self, source: str) -> ObfuscationResult:
-        """
-        Obfuscate Lua source code
-        
-        Args:
-            source: Lua source code (.lua or .txt content)
-            
-        Returns:
-            ObfuscationResult with obfuscated code
-        """
+        """Obfuscate Lua source code"""
         start_time = time.time()
         self.errors = []
         self.warnings = []
@@ -128,7 +102,6 @@ class LuaObfuscator:
         }
         
         try:
-            # Validate input
             if not self._validate_input(source):
                 return ObfuscationResult(
                     success=False,
@@ -142,7 +115,7 @@ class LuaObfuscator:
             self.errors.extend(lexer.get_errors())
             
             if lexer.get_errors():
-                self.warnings.append("Lexer encountered errors, continuing with partial parse")
+                self.warnings.append("Lexer encountered errors")
             
             # Step 2: Parsing
             parser = LuaParser(tokens)
@@ -150,9 +123,9 @@ class LuaObfuscator:
             self.errors.extend(parser.get_errors())
             
             if parser.get_errors():
-                self.warnings.append("Parser encountered errors, some code may not be obfuscated")
+                self.warnings.append("Parser encountered errors")
             
-            # Step 3: Compilation to bytecode
+            # Step 3: Compilation
             compiler = BytecodeCompiler()
             bytecode, compile_errors = compiler.compile(ast)
             self.errors.extend(compile_errors)
@@ -161,7 +134,7 @@ class LuaObfuscator:
             self.stats['instructions'] = len(bytecode.instructions)
             self.stats['functions'] = len(bytecode.children) + 1
             
-            # Step 4: Generate VM with bytecode
+            # Step 4: Generate VM
             output = self._generate_protected_code(bytecode)
             
             # Step 5: Post-processing
@@ -198,16 +171,14 @@ class LuaObfuscator:
             self.errors.append("Empty source code")
             return False
         
-        # Check for bytecode
         if source.startswith('\x1bLua') or source.startswith('\x1b\x4c\x75\x61'):
-            self.errors.append("Luac bytecode is not supported. Please provide Lua source code.")
+            self.errors.append("Luac bytecode is not supported")
             return False
         
-        # Check for binary content
         try:
             source.encode('utf-8')
         except UnicodeError:
-            self.errors.append("Source contains invalid characters. Please provide valid Lua text.")
+            self.errors.append("Source contains invalid characters")
             return False
         
         return True
@@ -218,8 +189,8 @@ class LuaObfuscator:
         
         # Watermark
         if self.config.add_watermark:
-            parts.append(f"-- {self.config.watermark_text}")
-            parts.append(f"-- Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+            parts.append("-- " + self.config.watermark_text)
+            parts.append("-- Generated: " + time.strftime('%Y-%m-%d %H:%M:%S'))
             parts.append("")
         
         # Generate encryption key
@@ -234,15 +205,15 @@ class LuaObfuscator:
         # Generate VM code
         vm_code = vm_gen.generate(bytecode, mode=self.config.mode)
         
-        # Add anti-tamper if enabled
+        # Add anti-tamper
         if self.config.add_anti_tamper:
             vm_code = self._wrap_with_anti_tamper(vm_code)
         
-        # Add anti-dump if enabled
+        # Add anti-dump
         if self.config.add_anti_dump:
             vm_code = self._add_anti_dump(vm_code)
         
-        # Add junk code if enabled
+        # Add junk code
         if self.config.add_junk_code:
             vm_code = self._inject_junk_code(vm_code)
         
@@ -252,49 +223,54 @@ class LuaObfuscator:
     
     def _wrap_with_anti_tamper(self, code: str) -> str:
         """Wrap code with anti-tamper protection"""
-        # Calculate code hash
         code_hash = hashlib.sha256(code.encode()).hexdigest()[:16]
         
         wrapper_var = self._random_name()
         hash_var = self._random_name()
         check_var = self._random_name()
         
-        anti_tamper = f'''
-local {hash_var} = "{code_hash}"
-local {wrapper_var} = function()
-    local {check_var} = string.sub(string.format("%x", 
-        #{code.replace(chr(10), "").replace('"', '\\"')[:100]}), 1, 8)
-    -- Integrity verification
-end
-{wrapper_var}()
-
-'''
-        return anti_tamper + code
+        # Build anti-tamper code without backslash in f-string
+        anti_tamper_lines = [
+            'local ' + hash_var + ' = "' + code_hash + '"',
+            'local ' + wrapper_var + ' = function()',
+            '    local ' + check_var + ' = ' + hash_var,
+            '    -- Integrity verification',
+            'end',
+            wrapper_var + '()',
+            ''
+        ]
+        
+        anti_tamper = '\n'.join(anti_tamper_lines)
+        return anti_tamper + '\n' + code
     
     def _add_anti_dump(self, code: str) -> str:
         """Add anti-dump protection"""
         var1 = self._random_name()
         var2 = self._random_name()
         
-        anti_dump = f'''
-local {var1} = newproxy and newproxy(true) or {{}}
-local {var2} = getmetatable({var1}) or {{}}
-{var2}.__tostring = function() return "" end
-{var2}.__metatable = "Protected"
-
-'''
-        return anti_dump + code
+        anti_dump_lines = [
+            'local ' + var1 + ' = newproxy and newproxy(true) or {}',
+            'local ' + var2 + ' = getmetatable(' + var1 + ') or {}',
+            var2 + '.__tostring = function() return "" end',
+            var2 + '.__metatable = "Protected"',
+            ''
+        ]
+        
+        anti_dump = '\n'.join(anti_dump_lines)
+        return anti_dump + '\n' + code
     
     def _inject_junk_code(self, code: str) -> str:
-        """Inject junk/dead code at random positions"""
+        """Inject junk/dead code"""
         lines = code.split('\n')
         result = []
         
         junk_count = int(len(lines) * self.config.junk_code_ratio)
-        junk_positions = set(random.sample(
-            range(len(lines)), 
-            min(junk_count, len(lines))
-        ))
+        junk_positions = set()
+        
+        if len(lines) > 0:
+            positions = list(range(len(lines)))
+            random.shuffle(positions)
+            junk_positions = set(positions[:min(junk_count, len(positions))])
         
         for i, line in enumerate(lines):
             result.append(line)
@@ -306,44 +282,43 @@ local {var2} = getmetatable({var1}) or {{}}
         return '\n'.join(result)
     
     def _is_critical_line(self, line: str) -> bool:
-        """Check if line should not have junk inserted after it"""
+        """Check if line is critical"""
         stripped = line.strip()
         critical_patterns = [
             'function', 'then', 'do', 'else', 'elseif',
-            '{', 'return', '--'
+            '{', 'return', '--', 'end', 'local function'
         ]
-        return any(stripped.startswith(p) or stripped.endswith(p) 
-                  for p in critical_patterns)
+        for p in critical_patterns:
+            if stripped.startswith(p) or stripped.endswith(p):
+                return True
+        return False
     
     def _generate_junk_line(self) -> str:
-        """Generate a single junk code line"""
-        junk_templates = [
-            lambda: f"local {self._random_name()} = {random.randint(0, 9999)}",
-            lambda: f"local {self._random_name()} = {random.random():.6f}",
-            lambda: f"local {self._random_name()} = '{self._random_name()}'",
-            lambda: f"local {self._random_name()} = {{}}",
-            lambda: f"local {self._random_name()} = nil",
-            lambda: f"local {self._random_name()} = {random.choice(['true', 'false'])}",
-            lambda: f"do local {self._random_name()} = {random.randint(0, 100)} end",
-            lambda: f"if false then local {self._random_name()} = 0 end",
-            lambda: f"local _ = {random.randint(0, 999)} + {random.randint(0, 999)}",
-            lambda: f"-- {self._random_name(8)}"
+        """Generate a junk code line"""
+        junk_types = [
+            lambda: "local " + self._random_name() + " = " + str(random.randint(0, 9999)),
+            lambda: "local " + self._random_name() + " = " + str(random.random()),
+            lambda: "local " + self._random_name() + " = '" + self._random_name() + "'",
+            lambda: "local " + self._random_name() + " = {}",
+            lambda: "local " + self._random_name() + " = nil",
+            lambda: "local " + self._random_name() + " = " + random.choice(['true', 'false']),
+            lambda: "do local " + self._random_name() + " = " + str(random.randint(0, 100)) + " end",
+            lambda: "if false then local " + self._random_name() + " = 0 end",
+            lambda: "-- " + self._random_name(8)
         ]
         
-        return random.choice(junk_templates)()
+        return random.choice(junk_types)()
     
     def _minify_output(self, code: str) -> str:
-        """Minify the output code"""
+        """Minify output code"""
         lines = []
         for line in code.split('\n'):
             stripped = line.strip()
-            # Keep non-empty lines and comments (for watermark)
             if stripped and not stripped.startswith('--'):
                 lines.append(stripped)
             elif stripped.startswith('-- Protected') or stripped.startswith('-- Generated'):
                 lines.append(stripped)
         
-        # Don't make it too compact - keep some readability for debugging
         return '\n'.join(lines)
     
     def _random_name(self, length: int = 8) -> str:
@@ -355,22 +330,12 @@ local {var2} = getmetatable({var1}) or {{}}
         return prefix + first + rest
     
     def obfuscate_file(self, input_path: str, output_path: str = None) -> ObfuscationResult:
-        """
-        Obfuscate a Lua file
-        
-        Args:
-            input_path: Path to input .lua or .txt file
-            output_path: Path to output file (optional)
-            
-        Returns:
-            ObfuscationResult
-        """
-        # Validate file extension
+        """Obfuscate a Lua file"""
         if input_path.endswith('.luac'):
             return ObfuscationResult(
                 success=False,
                 output='',
-                errors=["Luac bytecode files are not supported. Please use .lua or .txt files."]
+                errors=["Luac bytecode files are not supported"]
             )
         
         try:
@@ -390,22 +355,13 @@ local {var2} = getmetatable({var1}) or {{}}
                 with open(output_path, 'w', encoding='utf-8') as f:
                     f.write(result.output)
             except Exception as e:
-                result.warnings.append(f"Failed to write output file: {str(e)}")
+                result.warnings.append(f"Failed to write output: {str(e)}")
         
         return result
 
 
 def obfuscate(source: str, **kwargs) -> str:
-    """
-    Convenience function to obfuscate Lua code
-    
-    Args:
-        source: Lua source code
-        **kwargs: Configuration options
-        
-    Returns:
-        Obfuscated code string
-    """
+    """Convenience function to obfuscate Lua code"""
     config = ObfuscationConfig(**kwargs)
     obfuscator = LuaObfuscator(config)
     result = obfuscator.obfuscate(source)
@@ -417,17 +373,7 @@ def obfuscate(source: str, **kwargs) -> str:
 
 
 def obfuscate_file(input_path: str, output_path: str = None, **kwargs) -> str:
-    """
-    Convenience function to obfuscate a Lua file
-    
-    Args:
-        input_path: Path to input file
-        output_path: Path to output file (optional)
-        **kwargs: Configuration options
-        
-    Returns:
-        Obfuscated code string
-    """
+    """Convenience function to obfuscate a Lua file"""
     config = ObfuscationConfig(**kwargs)
     obfuscator = LuaObfuscator(config)
     result = obfuscator.obfuscate_file(input_path, output_path)
